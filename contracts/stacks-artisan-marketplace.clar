@@ -23,6 +23,11 @@
   { name: (string-utf8 100), description: (string-utf8 500), verified: bool }
 )
 
+;; Read Functions
+(define-read-only (get-artisan (wallet principal))
+  (map-get? artisans { wallet: wallet })
+)
+
 (define-map craft-items 
   { id: uint }
   { 
@@ -78,5 +83,69 @@
         (merge artisan-data { verified: true }))
       (ok true)
     )
+  )
+)
+
+;; List Craft Item
+(define-public (list-craft-item 
+  (name (string-utf8 100)) 
+  (description (string-utf8 500)) 
+  (price uint) 
+  (image-url (string-utf8 500))
+)
+  (let 
+    (
+      (current-id (var-get next-item-id))
+      (new-id (+ current-id u1))
+    )
+    (asserts! (is-some (get-artisan tx-sender)) err-not-registered)
+    (asserts! (> (len name) u0) err-invalid-input)
+    (asserts! (> (len description) u0) err-invalid-input)
+    (asserts! (> price u0) err-zero-price)
+    (asserts! (> (len image-url) u0) err-invalid-input)
+    (var-set next-item-id new-id)
+    (map-set craft-items { id: new-id }
+      { 
+        artisan: tx-sender, 
+        name: name, 
+        description: description, 
+        price: price, 
+        image-url: image-url,
+        sold: false 
+      }
+    )
+    (ok new-id)
+  )
+)
+
+;; Read-only function to get craft item data
+(define-read-only (get-craft-item (item-id uint))
+  (map-get? craft-items { id: item-id })
+)
+
+;; Update Craft Item
+(define-public (update-craft-item 
+  (item-id uint)
+  (name (string-utf8 100)) 
+  (description (string-utf8 500)) 
+  (price uint) 
+  (image-url (string-utf8 500))
+)
+  (let ((item (unwrap! (get-craft-item item-id) err-item-not-found)))
+    (asserts! (is-eq (get artisan item) tx-sender) err-not-owner)
+    (asserts! (not (get sold item)) err-item-already-sold)
+    (asserts! (> (len name) u0) err-invalid-input)
+    (asserts! (> (len description) u0) err-invalid-input)
+    (asserts! (> price u0) err-zero-price)
+    (asserts! (> (len image-url) u0) err-invalid-input)
+    (map-set craft-items { id: item-id }
+      (merge item { 
+        name: name, 
+        description: description, 
+        price: price, 
+        image-url: image-url
+      })
+    )
+    (ok true)
   )
 )
