@@ -149,3 +149,65 @@
     (ok true)
   )
 )
+
+;; Delist Craft Item
+(define-public (delist-craft-item (item-id uint))
+  (let ((item (unwrap! (get-craft-item item-id) err-item-not-found)))
+    (asserts! (is-eq (get artisan item) tx-sender) err-not-owner)
+    (asserts! (not (get sold item)) err-item-already-sold)
+    (map-delete craft-items { id: item-id })
+    (ok true)
+  )
+)
+
+;; Purchase Craft Item
+(define-public (purchase-craft-item (item-id uint))
+  (let 
+    (
+      (item (unwrap! (map-get? craft-items { id: item-id }) err-not-found))
+      (artisan (get artisan item))
+      (price (get price item))
+      (platform-cut (/ (* price (var-get platform-fee)) u100))
+      (artisan-revenue (- price platform-cut))
+    )
+    (asserts! (not (get sold item)) err-already-sold)
+    (asserts! (>= (stx-get-balance tx-sender) price) err-insufficient-funds)
+    (try! (stx-transfer? platform-cut tx-sender contract-owner))
+    (try! (stx-transfer? artisan-revenue tx-sender artisan))
+    (map-set craft-items { id: item-id } 
+      (merge item { sold: true }))
+    (ok true)
+  )
+)
+
+;; Read-only function to get the current platform fee
+(define-read-only (get-platform-fee)
+  (var-get platform-fee)
+)
+
+;; Function to change the platform fee (only contract owner can do this)
+(define-public (change-platform-fee (new-fee uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-not-owner)
+    (asserts! (<= new-fee u100) err-fee-too-high)
+    (var-set platform-fee new-fee)
+    (ok true)
+  )
+)
+
+;; Withdraw Funds
+(define-public (withdraw-funds (amount uint))
+  (let 
+    (
+      (artisan tx-sender)
+      (platform-cut (/ (* amount (var-get platform-fee)) u100))
+      (withdrawable-amount (- amount platform-cut))
+    )
+    (asserts! (> amount u0) err-invalid-input)
+    (asserts! (>= (stx-get-balance artisan) amount) err-insufficient-funds)
+    (try! (stx-transfer? platform-cut artisan contract-owner))
+    (try! (stx-transfer? withdrawable-amount artisan artisan))
+    (ok true)
+  )
+)
+
